@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Configuración GeoWebCache (GWC) para la capa demo_predios.
+
+  TTL corto (1 hora) porque los predios se actualizan con frecuencia:
+  cambios de propietario, permisos de construcción, subdivisiones.
+
+  Grids incluidos:
+    - EPSG:4326   → WGS84 geográfico (WMS estándar)
+    - EPSG:900913 → Web Mercator (compatible con MapLibre GL JS / Leaflet)
+-->
+<GeoServerLayer>
+  <name>demo:demo_predios</name>
+  <enabled>true</enabled>
+
+  <!-- Expiración del caché de tiles en segundos (3600 = 1 hora) -->
+  <expireCache>3600</expireCache>
+
+  <!-- Expiración en cabeceras HTTP para clientes (30 minutos) -->
+  <expireClients>1800</expireClients>
+
+  <!-- Sin gutter (margen de tile) — predios tienen bordes bien definidos -->
+  <gutter>0</gutter>
+
+  <!-- Grids de tiling habilitados -->
+  <gridSubsets>
+
+    <!-- Grid WGS84 geográfico -->
+    <gridSubset>
+      <gridSetName>EPSG:4326</gridSetName>
+      <!-- Niveles de zoom: desde nivel mundial (0) hasta detalle predial (18) -->
+      <minCachedLevel>0</minCachedLevel>
+      <maxCachedLevel>18</maxCachedLevel>
+    </gridSubset>
+
+    <!-- Grid Web Mercator — requerido por MapLibre GL JS en el frontend -->
+    <gridSubset>
+      <gridSetName>EPSG:900913</gridSetName>
+      <minCachedLevel>0</minCachedLevel>
+      <maxCachedLevel>18</maxCachedLevel>
+    </gridSubset>
+
+  </gridSubsets>
+
+  <!-- Formatos de imagen soportados para tiles -->
+  <mimeFormats>
+    <!-- PNG con transparencia — preferido para superposición sobre mapa base -->
+    <string>image/png</string>
+    <!-- JPEG para zonas sin transparencia (mayor compresión) -->
+    <string>image/jpeg</string>
+  </mimeFormats>
+
+  <!-- Parámetros de renderizado: sin autoescala, resolución nativa -->
+  <metaWidthHeight>
+    <int>4</int>
+    <int>4</int>
+  </metaWidthHeight>
+
+  <!-- Usar capa interna de GeoServer para renderizado -->
+  <autoCacheStyles>true</autoCacheStyles>
+
+</GeoServerLayer>

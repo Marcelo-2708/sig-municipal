@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Namespace asociado al workspace 'demo' -->
+<!-- El URI debe ser único por workspace en toda la instalación GeoServer -->
+<namespace>
+  <prefix>demo</prefix>
+  <uri>http://sig.municipal/demo</uri>
+</namespace>

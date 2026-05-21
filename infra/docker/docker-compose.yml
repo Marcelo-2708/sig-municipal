@@ -1,0 +1,185 @@
+# ============================================================
+# SIG Municipal — Plataforma WebGIS Multi-Tenant
+# Docker Compose para DESARROLLO LOCAL
+# ============================================================
+# Uso:    docker compose up -d
+# Prerrequisito: archivo .env en la raíz del proyecto
+#   (copiar .env.example → .env y completar los valores)
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # BASE DE DATOS: PostgreSQL 15 con extensión PostGIS 3.4
+  # ----------------------------------------------------------
+  sig_postgres:
+    image: postgis/postgis:15-3.4
+    container_name: sig_postgres
+    restart: unless-stopped
+    # env_file carga el .env de la raíz del proyecto (ruta relativa al compose file).
+    # El contenedor recibe POSTGRES_USER/PASSWORD/DB directamente desde ahí,
+    # sin depender de la sustitución yaml ${VAR} que falla cuando Docker Compose
+    # no encuentra el .env (lo busca en la carpeta del compose file).
+    env_file:
+      - ../../.env
+    ports:
+      # Expuesto solo en localhost — NUNCA en 0.0.0.0
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Migraciones SQL ejecutadas al inicializar el contenedor
+      - ../../database/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - sig_red
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ----------------------------------------------------------
+  # SERVIDOR DE MAPAS: GeoServer 2.24.0
+  # ----------------------------------------------------------
+  sig_geoserver:
+    image: kartoza/geoserver:2.24.0
+    container_name: sig_geoserver
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      # Variables que la imagen kartoza/geoserver espera por este nombre exacto
+      GEOSERVER_ADMIN_USER:     ${GEOSERVER_USER:-admin}
+      GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_PASSWORD:-geoserver}
+      # Límites de memoria JVM
+      INITIAL_MEMORY: 512M
+      MAXIMUM_MEMORY: 2G
+    ports:
+      # Expuesto solo en localhost — NUNCA en 0.0.0.0
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - geoserver_data:/opt/geoserver_data
+      # Estilos SLD personalizados
+      - ../../geoserver/estilos:/opt/geoserver_data/styles:ro
+    networks:
+      - sig_red
+    depends_on:
+      sig_postgres:
+        condition: service_healthy
+
+  # ----------------------------------------------------------
+  # CACHÉ EN MEMORIA: Redis 7
+  # ----------------------------------------------------------
+  sig_redis:
+    image: redis:7-alpine
+    container_name: sig_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    networks:
+      - sig_red
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # ----------------------------------------------------------
+  # BACKEND: API REST Node.js + Fastify
+  # ----------------------------------------------------------
+  sig_backend:
+    build:
+      context: ../../backend
+      dockerfile: Dockerfile
+    container_name: sig_backend
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      # Sobreescribir solo los valores que dependen de la red Docker interna
+      DB_HOST: sig_postgres
+      DB_PORT: "5432"
+    ports:
+      # Expuesto solo en localhost — NUNCA en 0.0.0.0
+      - "127.0.0.1:3000:3000"
+    networks:
+      - sig_red
+    depends_on:
+      sig_postgres:
+        condition: service_healthy
+      sig_redis:
+        condition: service_healthy
+      sig_geoserver:
+        condition: service_started
+
+  # ----------------------------------------------------------
+  # FRONTEND: React + MapLibre GL JS (servidor de desarrollo Vite)
+  # ----------------------------------------------------------
+  sig_frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    container_name: sig_frontend
+    restart: unless-stopped
+    env_file:
+      - ../../.env
+    environment:
+      # URL interna Docker (el navegador del usuario no puede resolver sig_backend)
+      VITE_API_URL: http://localhost:3000
+    ports:
+      # Expuesto solo en localhost — NUNCA en 0.0.0.0
+      - "127.0.0.1:5173:5173"
+    networks:
+      - sig_red
+    depends_on:
+      - sig_backend
+
+  # ----------------------------------------------------------
+  # PROXY INVERSO: Nginx
+  # Único servicio con puertos públicos (80 y 443 en desarrollo)
+  # ----------------------------------------------------------
+  sig_nginx:
+    image: nginx:alpine
+    container_name: sig_nginx
+    restart: unless-stopped
+    ports:
+      # Nginx es el único punto de entrada externo
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/sites/:/etc/nginx/conf.d/:ro
+      - certbot_datos:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    networks:
+      - sig_red
+    depends_on:
+      - sig_backend
+      - sig_frontend
+      - sig_geoserver
+
+# ----------------------------------------------------------
+# RED INTERNA — aísla los servicios del host
+# ----------------------------------------------------------
+networks:
+  sig_red:
+    driver: bridge
+    name: sig_red
+
+# ----------------------------------------------------------
+# VOLÚMENES PERSISTENTES — sobreviven a reinicios del contenedor
+# ----------------------------------------------------------
+volumes:
+  postgres_data:
+    name: sig_postgres_data
+  geoserver_data:
+    name: sig_geoserver_data
+  redis_data:
+    name: sig_redis_data
+  certbot_datos:
+    name: sig_certbot_datos
+  certbot_webroot:
+    name: sig_certbot_webroot

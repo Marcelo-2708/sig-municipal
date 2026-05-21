@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Workspace GeoServer para el municipio de demostración -->
+<!-- Convención de nombres: workspace = codigo_municipio -->
+<workspace>
+  <name>demo</name>
+</workspace>

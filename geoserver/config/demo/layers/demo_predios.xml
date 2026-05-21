@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Definición de la capa 'demo_predios' en GeoServer.
+  Convención de nombres: {codigo_municipio}_{capa}
+  - name:       demo_predios  (nombre publicado en GeoServer / WMS)
+  - nativeName: predios       (nombre real de la tabla en PostGIS esquema mun_demo)
+-->
+<featureType>
+  <name>demo_predios</name>
+
+  <!-- Nombre real de la tabla en el esquema mun_demo de PostgreSQL -->
+  <nativeName>predios</nativeName>
+
+  <!-- Namespace correspondiente al workspace 'demo' -->
+  <namespace>
+    <name>demo</name>
+    <atom:link xmlns:atom="http://www.w3.org/2005/Atom"
+               rel="alternate"
+               href="http://sig.municipal/demo"
+               type="application/xml"/>
+  </namespace>
+
+  <title>Predios - Municipio Demo</title>
+  <abstract>Catastro predial del municipio de demostración. Incluye información de rol SII, dirección, propietario, superficie, zona y uso de suelo.</abstract>
+
+  <keywords>
+    <string>predios</string>
+    <string>catastro</string>
+    <string>demo</string>
+    <string>municipio</string>
+    <string>SIG Municipal</string>
+  </keywords>
+
+  <!-- Sistema de referencia de coordenadas — WGS84 geográfico -->
+  <srs>EPSG:4326</srs>
+  <nativeCRS>EPSG:4326</nativeCRS>
+
+  <!--
+    Bounding box aproximado de Chile continental + insular para entorno de desarrollo.
+    En producción este valor se actualizará con el bounding box real del municipio.
+  -->
+  <nativeBoundingBox>
+    <minx>-75.0</minx>
+    <miny>-55.0</miny>
+    <maxx>-66.0</maxx>
+    <maxy>-17.0</maxy>
+    <crs>EPSG:4326</crs>
+  </nativeBoundingBox>
+
+  <latLonBoundingBox>
+    <minx>-75.0</minx>
+    <miny>-55.0</miny>
+    <maxx>-66.0</maxx>
+    <maxy>-17.0</maxy>
+    <crs>EPSG:4326</crs>
+  </latLonBoundingBox>
+
+  <!-- Proyecciones adicionales disponibles para consulta WFS/WMS -->
+  <responsesSRS>
+    <string>EPSG:4326</string>
+    <string>EPSG:3857</string>
+  </responsesSRS>
+
+  <enabled>true</enabled>
+
+  <!-- Referencia al datastore PostGIS del municipio demo -->
+  <store class="dataStore">
+    <name>demo:demo_postgis</name>
+  </store>
+
+  <!-- Columna de geometría definida en la tabla predios -->
+  <nativeGeomAttributeName>geom</nativeGeomAttributeName>
+
+  <!-- Tiempo máximo de procesamiento de consulta WFS en ms (30 segundos) -->
+  <maxFeatures>5000</maxFeatures>
+  <numDecimals>6</numDecimals>
+  <overridingServiceSRS>false</overridingServiceSRS>
+  <skipNumberMatched>false</skipNumberMatched>
+  <circularArcPresent>false</circularArcPresent>
+</featureType>

@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Datastore PostGIS para el municipio demo.
+  Apunta al esquema 'mun_demo' dentro de la base de datos 'sig_municipal'.
+  Convención de nombres: datastore = {codigo_municipio}_postgis
+-->
+<dataStore>
+  <name>demo_postgis</name>
+  <description>Conexión PostGIS para el municipio demo</description>
+  <type>PostGIS</type>
+  <enabled>true</enabled>
+
+  <workspace>
+    <name>demo</name>
+  </workspace>
+
+  <connectionParameters>
+    <!-- Host del servicio PostgreSQL dentro de la red Docker -->
+    <entry key="host">sig_postgres</entry>
+
+    <!-- Puerto estándar de PostgreSQL -->
+    <entry key="port">5432</entry>
+
+    <!-- Base de datos compartida multi-tenant -->
+    <entry key="database">sig_municipal</entry>
+
+    <!-- Esquema exclusivo del municipio demo -->
+    <entry key="schema">mun_demo</entry>
+
+    <!-- Tipo de conexión obligatorio para datastores PostGIS -->
+    <entry key="dbtype">postgis</entry>
+
+    <!--
+      Credenciales del rol de aplicación.
+      IMPORTANTE: En producción reemplazar por variables de entorno del contenedor
+      o inyectar mediante el script configurar_demo.sh que lee $DB_USER y $DB_PASSWORD.
+    -->
+    <!-- Mismo usuario y contrasena que DB_USER / DB_PASSWORD en .env -->
+    <entry key="user">sig_usuario</entry>
+    <entry key="passwd">Admin1234</entry>
+
+    <!-- Configuración del pool de conexiones -->
+    <entry key="min connections">1</entry>
+    <entry key="max connections">10</entry>
+    <entry key="Connection timeout">20</entry>
+    <entry key="validate connections">true</entry>
+
+    <!-- Exposición de geometrías: usar columna 'geom' por convención del proyecto -->
+    <entry key="Expose primary keys">false</entry>
+    <entry key="fetch size">1000</entry>
+    <entry key="preparedStatements">true</entry>
+  </connectionParameters>
+</dataStore>

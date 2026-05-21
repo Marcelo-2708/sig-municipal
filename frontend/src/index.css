@@ -1,0 +1,87 @@
+/* Imports de Tailwind CSS */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* CSS de MapLibre GL JS */
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+/* ── Estilos globales base ──────────────────────────────────────────────── */
+@layer base {
+  html,
+  body,
+  #raiz {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    @apply font-sans text-gray-900 bg-gray-50;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Foco accesible visible */
+  *:focus-visible {
+    @apply outline-2 outline-offset-2 outline-municipal-600;
+  }
+}
+
+/* ── Utilidades de componentes reutilizables ───────────────────────────── */
+@layer components {
+  /* Contenedor del mapa siempre en pantalla completa */
+  .contenedor-mapa {
+    @apply absolute inset-0 w-full h-full;
+  }
+
+  /* Panel flotante sobre el mapa */
+  .panel-flotante {
+    @apply absolute bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden;
+  }
+
+  /* Botón primario del sistema */
+  .btn-primario {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium
+           text-white bg-municipal-700 rounded-md hover:bg-municipal-800
+           focus-visible:ring-2 focus-visible:ring-municipal-500
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-colors duration-150;
+  }
+
+  /* Botón secundario */
+  .btn-secundario {
+    @apply inline-flex items-center justify-center px-4 py-2 text-sm font-medium
+           text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50
+           focus-visible:ring-2 focus-visible:ring-municipal-500
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-colors duration-150;
+  }
+
+  /* Input de formulario */
+  .campo-texto {
+    @apply block w-full rounded-md border border-gray-300 px-3 py-2 text-sm
+           placeholder-gray-400 shadow-sm
+           focus:border-municipal-500 focus:ring-1 focus:ring-municipal-500
+           disabled:bg-gray-50 disabled:text-gray-500;
+  }
+}
+
+/* ── Animaciones personalizadas ───────────────────────────────────────── */
+@layer utilities {
+  /* Transición suave del panel lateral */
+  .panel-slide-enter {
+    transform: translateX(100%);
+  }
+  .panel-slide-enter-active {
+    transform: translateX(0);
+    transition: transform 250ms ease-out;
+  }
+  .panel-slide-exit {
+    transform: translateX(0);
+  }
+  .panel-slide-exit-active {
+    transform: translateX(100%);
+    transition: transform 200ms ease-in;
+  }
+}
