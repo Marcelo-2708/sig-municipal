@@ -1,0 +1,21 @@
+# Archivos sensibles — nunca deben entrar en la imagen
+.env
+.env.*
+!.env.example
+
+# Dependencias locales (se instalan dentro de la imagen)
+node_modules/
+
+# Logs y archivos temporales
+*.log
+npm-debug.log*
+.npm/
+
+# Archivos de desarrollo y test
+tests/
+coverage/
+.nyc_output/
+
+# Metadatos del sistema operativo
+.DS_Store
+Thumbs.db

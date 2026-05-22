@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { CENTRO_INICIAL, ZOOM_INICIAL, MAPA_BASE_DEFECTO } from '../config/mapas.js'
+import { CENTRO_INICIAL, ZOOM_INICIAL } from '../config/mapas.js'
 
 /**
  * Store del mapa.
@@ -13,9 +13,6 @@ const useMapaStore = create((set) => ({
   // Posición y zoom actuales del mapa
   centroActual: CENTRO_INICIAL,
   zoomActual: ZOOM_INICIAL,
-
-  // ID del mapa base activo (ver config/mapas.js)
-  mapaBaseActivo: MAPA_BASE_DEFECTO,
 
   // Predio actualmente resaltado (GeoJSON Feature o null)
   predioResaltado: null,
@@ -37,12 +34,6 @@ const useMapaStore = create((set) => ({
    * @param {number} zoom
    */
   setZoom: (zoom) => set({ zoomActual: zoom }),
-
-  /**
-   * Cambia el mapa base activo.
-   * @param {string} idMapa - ID del mapa base (ver MAPAS_BASE en config/mapas.js)
-   */
-  setMapaBase: (idMapa) => set({ mapaBaseActivo: idMapa }),
 
   /**
    * Marca un predio como resaltado en el mapa.

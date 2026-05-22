@@ -33,6 +33,9 @@ import rutasCapas from './src/routes/capas.js';
 import rutasPredios from './src/routes/predios.js';
 import rutasReportes from './src/routes/reportes.js';
 import rutasSuperAdmin from './src/routes/superadmin.js';
+import rutasUsuarios from './src/routes/usuarios.js';
+import rutasLog from './src/routes/log.js';
+import rutasStats from './src/routes/stats.js';
 
 // ── Crear instancia de Fastify ────────────────────────────────────────────
 
@@ -148,6 +151,9 @@ async function construirServidor() {
   await fastify.register(rutasPredios);
   await fastify.register(rutasReportes);
   await fastify.register(rutasSuperAdmin);
+  await fastify.register(rutasUsuarios);
+  await fastify.register(rutasLog);
+  await fastify.register(rutasStats);
 
   return fastify;
 }

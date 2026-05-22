@@ -4,205 +4,128 @@
  * Estas rutas NO pasan por el middleware de tenant.
  * Solo accesibles con rol super_admin.
  *
- * GET  /api/superadmin/municipios          — Lista todos los municipios
- * POST /api/superadmin/municipios          — Crea un municipio nuevo
- * PUT  /api/superadmin/municipios/:id/estado — Activa/desactiva municipio
+ * GET  /api/superadmin/municipios             — Lista todos los municipios
+ * POST /api/superadmin/municipios             — Crea un municipio (onboarding completo)
+ * GET  /api/superadmin/municipios/:id         — Detalle de un municipio
+ * PUT  /api/superadmin/municipios/:id/estado  — Activa/desactiva municipio
  */
 
-import { verificarToken, soloRoles } from '../middleware/auth.js';
-import { consultar } from '../config/database.js';
-import { AppError } from '../utils/AppError.js';
-import logger from '../utils/logger.js';
-import { z } from 'zod';
-import { validar } from '../utils/validators.js';
+import { verificarToken, soloRoles } from '../middleware/auth.js'
+import { consultar } from '../config/database.js'
+import { crearMunicipio, listarMunicipios } from '../services/municipioService.js'
+import { AppError } from '../utils/AppError.js'
+import logger from '../utils/logger.js'
+import { z } from 'zod'
+import { validar } from '../utils/validators.js'
 
-// Esquema de validación para crear municipio
 const zCrearMunicipio = z.object({
-  nombre: z.string().min(2).max(150).trim(),
-  codigo: z
-    .string()
-    .min(2)
-    .max(50)
-    .regex(/^[a-z0-9_-]+$/, 'El código solo puede contener letras minúsculas, números, guiones y guiones bajos')
-    .trim(),
-  region: z.string().max(100).optional(),
-  esquemaBd: z
-    .string()
-    .min(2)
-    .max(63)
-    .regex(/^[a-z_][a-z0-9_]*$/, 'Nombre de esquema inválido')
-    .optional(),
-});
+  nombre:     z.string().min(2).max(150).trim(),
+  codigo:     z.string().min(2).max(40)
+               .regex(/^[a-z0-9_-]+$/, 'El código solo puede contener letras minúsculas, números, _ y -')
+               .trim(),
+  subdominio: z.string().min(2).max(63)
+               .regex(/^[a-z0-9-]+$/, 'El subdominio solo puede contener letras minúsculas, números y -')
+               .trim(),
+  region:     z.string().max(100).optional(),
+  provincia:  z.string().max(100).optional(),
+  plan:       z.enum(['basico', 'estandar', 'premium']).default('basico'),
+})
 
-/**
- * @param {import('fastify').FastifyInstance} fastify
- */
+/** @param {import('fastify').FastifyInstance} fastify */
 export default async function rutasSuperAdmin(fastify) {
-  // Hook de auth aplicado a todas las rutas de este plugin
-  fastify.addHook('preHandler', verificarToken);
-  fastify.addHook('preHandler', soloRoles('super_admin'));
+  fastify.addHook('preHandler', verificarToken)
+  fastify.addHook('preHandler', soloRoles('super_admin'))
 
-  // ── GET /api/superadmin/municipios ────────────────────────────────────
-  fastify.get(
-    '/api/superadmin/municipios',
-    {
-      schema: {
-        description: 'Lista todos los municipios registrados en la plataforma',
-        tags: ['SuperAdmin'],
-        security: [{ bearerAuth: [] }],
-        response: {
-          200: {
-            type: 'object',
-            properties: {
-              municipios: {
-                type: 'array',
-                items: {
-                  type: 'object',
-                  properties: {
-                    id: { type: 'string' },
-                    nombre: { type: 'string' },
-                    codigo: { type: 'string' },
-                    region: { type: 'string' },
-                    esquema_bd: { type: 'string' },
-                    activo: { type: 'boolean' },
-                    fecha_creacion: { type: 'string' },
-                  },
-                },
-              },
-              total: { type: 'integer' },
-            },
-          },
-        },
-      },
-    },
-    async (_request, reply) => {
-      const resultado = await consultar(
-        `SELECT id, nombre, codigo, region, esquema_bd, activo, fecha_creacion
-         FROM public.municipios
-         ORDER BY nombre ASC`
-      );
+  // ── GET /api/superadmin/municipios ──────────────────────────────────────
+  fastify.get('/api/superadmin/municipios', async (_request, reply) => {
+    const municipios = await listarMunicipios()
+    return reply.status(200).send({ municipios, total: municipios.length })
+  })
 
-      return reply.status(200).send({
-        municipios: resultado.rows,
-        total: resultado.rowCount,
-      });
-    }
-  );
+  // ── GET /api/superadmin/municipios/:id ──────────────────────────────────
+  fastify.get('/api/superadmin/municipios/:id', async (request, reply) => {
+    const { id } = request.params
 
-  // ── POST /api/superadmin/municipios ───────────────────────────────────
+    const res = await consultar(
+      `SELECT m.id, m.codigo, m.nombre, m.subdominio, m.region, m.provincia,
+              m.esquema_bd, m.activo, m.plan, m.config, m.creado_en,
+              COUNT(DISTINCT u.id) FILTER (WHERE u.activo)  AS usuarios_activos,
+              COUNT(DISTINCT c.id) FILTER (WHERE c.activo)  AS capas_activas
+       FROM public.municipios m
+       LEFT JOIN public.usuarios u ON u.municipio_id = m.id
+       LEFT JOIN public.capas    c ON c.municipio_id = m.id
+       WHERE m.id = $1
+       GROUP BY m.id`,
+      [id]
+    )
+
+    if (res.rows.length === 0)
+      throw new AppError('Municipio no encontrado', 404, 'MUNICIPIO_NO_ENCONTRADO')
+
+    return reply.status(200).send(res.rows[0])
+  })
+
+  // ── POST /api/superadmin/municipios ─────────────────────────────────────
   fastify.post(
     '/api/superadmin/municipios',
     {
       schema: {
-        description: 'Crea un nuevo municipio en la plataforma',
-        tags: ['SuperAdmin'],
-        security: [{ bearerAuth: [] }],
         body: {
           type: 'object',
-          required: ['nombre', 'codigo'],
+          required: ['nombre', 'codigo', 'subdominio'],
           properties: {
-            nombre: { type: 'string' },
-            codigo: { type: 'string' },
-            region: { type: 'string' },
-            esquemaBd: { type: 'string' },
+            nombre:     { type: 'string' },
+            codigo:     { type: 'string' },
+            subdominio: { type: 'string' },
+            region:     { type: 'string' },
+            provincia:  { type: 'string' },
+            plan:       { type: 'string', enum: ['basico', 'estandar', 'premium'] },
           },
         },
       },
     },
     async (request, reply) => {
-      const datos = await validar(zCrearMunicipio, request.body);
-
-      // El esquema_bd se deriva del código si no se especifica
-      const esquemaBd = datos.esquemaBd ?? `municipio_${datos.codigo.replace(/-/g, '_')}`;
-
-      // Verificar que el código no esté en uso
-      const existente = await consultar(
-        'SELECT id FROM public.municipios WHERE codigo = $1',
-        [datos.codigo]
-      );
-      if (existente.rows.length > 0) {
-        throw new AppError(
-          `Ya existe un municipio con el código "${datos.codigo}"`,
-          409,
-          'CODIGO_EN_USO'
-        );
-      }
-
-      const resultado = await consultar(
-        `INSERT INTO public.municipios (nombre, codigo, region, esquema_bd, activo)
-         VALUES ($1, $2, $3, $4, true)
-         RETURNING id, nombre, codigo, region, esquema_bd, activo, fecha_creacion`,
-        [datos.nombre, datos.codigo, datos.region ?? null, esquemaBd]
-      );
-
-      const municipio = resultado.rows[0];
+      const datos = await validar(zCrearMunicipio, request.body)
 
       logger.info(
-        { municipioId: municipio.id, codigo: municipio.codigo, nombre: municipio.nombre },
-        'Nuevo municipio creado en la plataforma'
-      );
+        { codigo: datos.codigo, nombre: datos.nombre, operador: request.usuario?.sub },
+        'Iniciando onboarding de municipio'
+      )
 
-      return reply.status(201).send(municipio);
+      const { municipio, advertencias } = await crearMunicipio(datos)
+
+      return reply.status(201).send({ municipio, advertencias })
     }
-  );
+  )
 
-  // ── PUT /api/superadmin/municipios/:id/estado ─────────────────────────
-  fastify.put(
-    '/api/superadmin/municipios/:id/estado',
-    {
-      schema: {
-        description: 'Activa o desactiva un municipio en la plataforma',
-        tags: ['SuperAdmin'],
-        security: [{ bearerAuth: [] }],
-        params: {
-          type: 'object',
-          required: ['id'],
-          properties: {
-            id: { type: 'string', format: 'uuid' },
-          },
-        },
-        body: {
-          type: 'object',
-          required: ['activo'],
-          properties: {
-            activo: { type: 'boolean' },
-          },
-        },
-      },
-    },
-    async (request, reply) => {
-      const { id } = request.params;
-      const { activo } = request.body;
+  // ── PUT /api/superadmin/municipios/:id/estado ────────────────────────────
+  fastify.put('/api/superadmin/municipios/:id/estado', async (request, reply) => {
+    const { id } = request.params
+    const { activo } = request.body
 
-      if (typeof activo !== 'boolean') {
-        throw new AppError('El campo "activo" debe ser true o false', 422, 'VALIDACION_FALLIDA');
-      }
+    if (typeof activo !== 'boolean')
+      throw new AppError('El campo "activo" debe ser true o false', 422, 'VALIDACION_FALLIDA')
 
-      // Verificar que el municipio exista
-      const existente = await consultar(
-        'SELECT id, nombre, activo FROM public.municipios WHERE id = $1',
-        [id]
-      );
-      if (existente.rows.length === 0) {
-        throw new AppError('Municipio no encontrado', 404, 'MUNICIPIO_NO_ENCONTRADO');
-      }
+    const existente = await consultar(
+      'SELECT id, nombre FROM public.municipios WHERE id = $1',
+      [id]
+    )
+    if (existente.rows.length === 0)
+      throw new AppError('Municipio no encontrado', 404, 'MUNICIPIO_NO_ENCONTRADO')
 
-      const resultado = await consultar(
-        `UPDATE public.municipios
-         SET activo = $1, fecha_actualizacion = NOW()
-         WHERE id = $2
-         RETURNING id, nombre, codigo, activo`,
-        [activo, id]
-      );
+    const res = await consultar(
+      `UPDATE public.municipios
+       SET activo = $1, actualizado_en = NOW()
+       WHERE id = $2
+       RETURNING id, nombre, codigo, activo`,
+      [activo, id]
+    )
 
-      const municipio = resultado.rows[0];
+    logger.info(
+      { municipioId: id, nombre: res.rows[0].nombre, activo },
+      `Municipio ${activo ? 'activado' : 'desactivado'}`
+    )
 
-      logger.info(
-        { municipioId: id, nombre: municipio.nombre, activo },
-        `Municipio ${activo ? 'activado' : 'desactivado'}`
-      );
-
-      return reply.status(200).send(municipio);
-    }
-  );
+    return reply.status(200).send(res.rows[0])
+  })
 }

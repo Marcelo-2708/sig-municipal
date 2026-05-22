@@ -5,7 +5,7 @@
  */
 
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Navigate, Link } from 'react-router-dom'
 import useAuth from '../hooks/useAuth.js'
 import api from '../services/api.js'
 import Spinner from '../components/ui/Spinner.jsx'
@@ -21,7 +21,7 @@ function Login() {
 
   // Si ya está autenticado, redirige directamente
   if (estaAutenticado) {
-    return navegar('/admin', { replace: true })
+    return <Navigate to="/admin" replace />
   }
 
   async function manejarEnvio(e) {
@@ -37,7 +37,7 @@ function Login() {
 
       // Redirige según el rol del usuario
       const rolUsuario = usuario?.rol ?? ''
-      if (['admin', 'superadmin', 'funcionario'].includes(rolUsuario)) {
+      if (['super_admin', 'admin_municipal', 'editor_gis', 'funcionario'].includes(rolUsuario)) {
         navegar('/admin', { replace: true })
       } else {
         navegar('/', { replace: true })

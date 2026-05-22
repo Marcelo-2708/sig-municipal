@@ -6,7 +6,7 @@
 import useAuthStore from '../store/authStore.js'
 
 // Jerarquía de roles: mayor índice = más privilegios
-const JERARQUIA_ROLES = ['ciudadano', 'funcionario', 'admin', 'superadmin']
+const JERARQUIA_ROLES = ['funcionario', 'editor_gis', 'admin_municipal', 'super_admin']
 
 /**
  * @returns {{

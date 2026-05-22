@@ -4,6 +4,9 @@ import MapaPublico from './pages/MapaPublico.jsx'
 import Login from './pages/Login.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import AdminCapas from './pages/AdminCapas.jsx'
+import AdminUsuarios from './pages/AdminUsuarios.jsx'
+import OnboardingMunicipio from './pages/OnboardingMunicipio.jsx'
+import LogCambios from './pages/LogCambios.jsx'
 import NotFound from './pages/NotFound.jsx'
 import LayoutAdmin from './components/admin/LayoutAdmin.jsx'
 
@@ -27,6 +30,9 @@ function App() {
       <Route path="/admin" element={<LayoutAdmin />}>
         <Route index element={<Dashboard />} />
         <Route path="capas" element={<AdminCapas />} />
+        <Route path="usuarios" element={<AdminUsuarios />} />
+        <Route path="municipios/nuevo" element={<OnboardingMunicipio />} />
+        <Route path="log" element={<LogCambios />} />
         {/* Redirección por defecto dentro del panel */}
         <Route path="*" element={<Navigate to="/admin" replace />} />
       </Route>

@@ -131,11 +131,18 @@ export async function peticion(metodo, ruta, datos = null, opciones = {}) {
 
 // Atajos para los métodos HTTP más comunes
 const api = {
-  get:    (ruta, opciones)  => peticion('GET',    ruta, null,  opciones),
-  post:   (ruta, datos)     => peticion('POST',   ruta, datos),
-  put:    (ruta, datos)     => peticion('PUT',    ruta, datos),
-  patch:  (ruta, datos)     => peticion('PATCH',  ruta, datos),
-  delete: (ruta)            => peticion('DELETE', ruta),
+  get: (ruta, { params, ...resto } = {}) => {
+    const qs = params
+      ? '?' + new URLSearchParams(
+          Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== ''))
+        ).toString()
+      : ''
+    return peticion('GET', ruta + qs, null, resto)
+  },
+  post:   (ruta, datos) => peticion('POST',   ruta, datos),
+  put:    (ruta, datos) => peticion('PUT',    ruta, datos),
+  patch:  (ruta, datos) => peticion('PATCH',  ruta, datos),
+  delete: (ruta)        => peticion('DELETE', ruta),
 }
 
 export default api

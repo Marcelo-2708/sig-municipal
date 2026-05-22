@@ -12,38 +12,39 @@ const PREFIJO_CAPA_WMS = 'wms-'
 
 /**
  * Construye la URL de tiles WMS para una capa dada.
- * @param {string} geoserverUrl - URL base del GeoServer
- * @param {string} nombreCapa   - Nombre de la capa en GeoServer (workspace:capa)
- * @returns {string} URL de tiles WMS
+ * @param {string} endpointWms - URL completa del endpoint WMS (ej: https://host/wms)
+ * @param {string} nombreCapa  - Nombre de la capa tal como lo espera el servidor WMS
+ * @returns {string} URL de tiles WMS con parámetros GetMap
  */
-function construirUrlWMS(geoserverUrl, nombreCapa) {
-  const params = new URLSearchParams({
-    service: 'WMS',
-    version: '1.1.1',
-    request: 'GetMap',
-    layers: nombreCapa,
-    bbox: '{bbox-epsg-3857}',
-    width: '256',
-    height: '256',
-    srs: 'EPSG:3857',
-    styles: '',
-    format: 'image/png',
-    transparent: 'true',
-  })
-  return `${geoserverUrl}/wms?${params.toString()}`
+function construirUrlWMS(endpointWms, nombreCapa) {
+  // Construido como string literal — NO usar URLSearchParams porque:
+  //   • codifica ":" → "%3A"  (rompe "demo:capa" en GeoServer)
+  //   • codifica "{" → "%7B"  (rompe "{bbox-epsg-3857}" que MapLibre sustituye en runtime)
+  return (
+    `${endpointWms}?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap` +
+    `&LAYERS=${nombreCapa}&WIDTH=256&HEIGHT=256` +
+    `&SRS=EPSG:3857&STYLES=&FORMAT=image/png&TRANSPARENT=true` +
+    `&BBOX={bbox-epsg-3857}`
+  )
 }
 
 /**
  * Agrega una capa WMS al mapa MapLibre.
  * Si la capa ya existe, no hace nada.
  *
- * @param {maplibregl.Map} mapa         - Instancia del mapa
- * @param {object}         capa         - Objeto capa del backend
- * @param {string}         capa.id      - ID único de la capa
- * @param {string}         capa.nombre_geoserver - Nombre en GeoServer
- * @param {number}         [capa.opacidad=1]     - Opacidad (0-1)
- * @param {number}         [capa.orden=0]        - Orden de renderizado
- * @param {string}         geoserverUrl - URL base del GeoServer
+ * Soporta dos modos:
+ * - Capa GeoServer (tabla_origen != null): usa geoserverUrl del entorno + nombre_interno
+ * - Capa WMS externa (tabla_origen == null): usa url_wms de la BD + nombre_capa_wms
+ *
+ * @param {maplibregl.Map} mapa              - Instancia del mapa
+ * @param {object}         capa              - Objeto capa del backend
+ * @param {string}         capa.id           - ID único de la capa
+ * @param {string}         capa.nombre_interno    - Nombre interno (slug)
+ * @param {string|null}    capa.tabla_origen - Tabla PostGIS asociada (null = WMS externo)
+ * @param {string|null}    capa.url_wms      - Endpoint WMS (para capas externas)
+ * @param {string|null}    capa.nombre_capa_wms   - Nombre real de la capa en el servidor WMS externo
+ * @param {number}         [capa.opacidad=1] - Opacidad (0-1)
+ * @param {string}         geoserverUrl      - URL pública del GeoServer (entorno)
  */
 export function agregarCapaWMS(mapa, capa, geoserverUrl) {
   const idFuente = `${PREFIJO_CAPA_WMS}src-${capa.id}`
@@ -52,7 +53,17 @@ export function agregarCapaWMS(mapa, capa, geoserverUrl) {
   // Evita duplicar la capa si ya fue agregada
   if (mapa.getLayer(idCapa)) return
 
-  const urlTiles = construirUrlWMS(geoserverUrl, capa.nombre_geoserver)
+  // Determina el endpoint WMS y el nombre de la capa
+  const esExterna = !capa.tabla_origen
+  const endpointWms = esExterna ? capa.url_wms : `${geoserverUrl}/wms`
+  const nombreCapaWMS = capa.nombre_capa_wms ?? capa.nombre_interno
+
+  const urlTiles = construirUrlWMS(endpointWms, nombreCapaWMS)
+
+  console.log(
+    `[WMS] Capa "${capa.nombre ?? capa.nombre_interno}" | LAYERS=${nombreCapaWMS}\n` +
+    `      URL template: ${urlTiles}`
+  )
 
   // Agrega la fuente raster
   if (!mapa.getSource(idFuente)) {

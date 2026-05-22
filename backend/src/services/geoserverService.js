@@ -97,6 +97,53 @@ export async function crearWorkspaceSiNoExiste(nombre) {
   }
 }
 
+// ── Datastores ─────────────────────────────────────────────────────────────
+
+/**
+ * Crea el datastore PostGIS de un workspace.
+ * Llamado durante el onboarding de un municipio nuevo.
+ *
+ * @param {string} workspace  - Nombre del workspace (= código del municipio)
+ * @param {string} esquemaBd  - Esquema PostgreSQL del municipio (ej: mun_concepcion)
+ */
+export async function crearDatastoreWorkspace(workspace, esquemaBd) {
+  const nombreDatastore = `${workspace}_postgis`
+
+  const configDatastore = {
+    dataStore: {
+      name: nombreDatastore,
+      type: 'PostGIS',
+      enabled: true,
+      connectionParameters: {
+        entry: [
+          { '@key': 'host',                $: config.baseDatos.host },
+          { '@key': 'port',                $: String(config.baseDatos.puerto) },
+          { '@key': 'database',            $: config.baseDatos.nombre },
+          { '@key': 'user',                $: config.baseDatos.usuario },
+          { '@key': 'passwd',              $: config.baseDatos.contrasena },
+          { '@key': 'schema',              $: esquemaBd },
+          { '@key': 'dbtype',              $: 'postgis' },
+          { '@key': 'Expose primary keys', $: 'true' },
+        ],
+      },
+    },
+  }
+
+  try {
+    await solicitudGeoServer(`/workspaces/${workspace}/datastores`, {
+      method: 'POST',
+      body: JSON.stringify(configDatastore),
+    })
+    logger.info({ workspace, nombreDatastore, esquemaBd }, 'Datastore PostGIS creado en GeoServer')
+  } catch (error) {
+    if (error.message?.includes('409')) {
+      logger.debug({ workspace, nombreDatastore }, 'Datastore PostGIS ya existía en GeoServer')
+    } else {
+      throw error
+    }
+  }
+}
+
 // ── Capas ──────────────────────────────────────────────────────────────────
 
 /**
