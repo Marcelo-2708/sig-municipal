@@ -1,6 +1,6 @@
 # Estado del proyecto SIG Municipal
 
-## Última actualización: 2026-05-21
+## Última actualización: 2026-05-22
 
 ---
 
@@ -119,6 +119,54 @@ Piloto verificado en `http://demo.localhost`: mapa funcional con 3 estilos base 
 
 ---
 
+## ✅ Fase 2.6 — Capas reales en el mapa demo — COMPLETADA (2026-05-22)
+
+Migración del mapa público de capas de ejemplo a datos reales importados desde shapefiles.
+Capas servidas desde GeoServer local (PostGIS `mun_demo`), no desde WMS externo.
+
+### Datos
+
+- Shapefiles importados a PostGIS vía `shp2pgsql` dentro del contenedor `sig_postgres`:
+  - `mun_demo.inacap_ccp_thno` — puntos INACAP Concepción-Talcahuano (MULTIPOINT, EPSG:32718)
+  - `mun_demo.eem_idoneos` — puntos EEM Idóneos (MULTIPOINT, EPSG:32718)
+- Script de importación: `docker cp` + `shp2pgsql -s 32718 -I` dentro del contenedor
+- `database/scripts/reemplazar_capas_demo.sql` — elimina capas placeholder e inserta las reales en `public.capas`
+
+### GeoServer
+
+- Workspace `demo` + datastore `demo_postgis` (host `sig_postgres`, esquema `mun_demo`) creados vía REST API
+- Capas publicadas con `nativeCRS: EPSG:32718 → srs: EPSG:4326` (`projectionPolicy: REPROJECT_TO_DECLARED`)
+- BBox recalculado desde los datos reales (`?recalculate=nativebbox,latlonbbox`)
+- `geoserver/config/demo/publicar_capas_demo.ps1` — script idempotente (verifica antes de crear); reemplaza `configurar_demo.ps1` para esta fase
+
+### Backend
+
+- `services/capaService.js` — `obtenerCapasPublicas()` retorna `nombre_capa_wms` desde JSONB metadata
+- `routes/capas.js` — schema `/api/capas/publicas` incluye `nombre_capa_wms`
+- `public.capas` actualizado: `tabla_origen` = nombre de tabla PostGIS; `url_wms` = URL interna GeoServer; `metadata.nombre_capa_wms` = `demo:inacap_ccp_thno` / `demo:eem_idoneos`
+
+### Frontend — mapa base
+
+- `SelectorMapaBase.jsx` eliminado — el fondo es fijo, definido por proyecto
+- `config/mapas.js` simplificado: exporta `ESTILO_MAPA_BASE` (OSM Mapnik) + `CENTRO_INICIAL`/`ZOOM_INICIAL`; eliminados `MAPAS_BASE` y `MAPA_BASE_DEFECTO`
+- `store/mapaStore.js` — eliminados `mapaBaseActivo` y `setMapaBase`
+- `MapaBase.jsx` — usa `ESTILO_MAPA_BASE` fijo; eliminado `useEffect` de cambio de estilo
+- Centro inicial: `[-73.12, -36.633]` (WGS84, área del proyecto Concepción); zoom 14
+
+### Frontend — capas WMS y GetFeatureInfo
+
+- `services/mapaUtils.js`:
+  - `construirUrlWMS` reescrita como string literal — `URLSearchParams` codificaba `:` → `%3A` (rompía `demo:capa` en GeoServer) y `{` → `%7B` (rompía `{bbox-epsg-3857}` de MapLibre)
+  - `agregarCapaWMS` diferencia capas GeoServer (`tabla_origen` != '') de WMS externas; usa `nombre_capa_wms` para el parámetro `LAYERS`
+- `hooks/useGetFeatureInfo.js` — nuevo; consulta WMS GetFeatureInfo al hacer click en el mapa:
+  - Capas GeoServer local: endpoint `/geoserver/wms` (accesible via Nginx); query string literal (mismo fix de codificación)
+  - Capas externas: `capa.url_wms` directo
+  - Timeout 8 s; cursor `wait` durante carga; fallo por capa no cancela las demás
+- `components/mapa/PanelFeatureInfo.jsx` — nuevo; panel derecho con atributos por capa/feature; filtra campos internos GIS (`objectid`, `gid`, `geometry`, etc.); tarjetas colapsables
+- `pages/MapaPublico.jsx` — integra `useGetFeatureInfo` + `PanelFeatureInfo`; oculta `FichaPredio` cuando GFI está activo
+
+---
+
 ## 🔜 Fase 3 — Funcionalidades avanzadas (sem. 9–16)
 
 ### 3.1 Búsqueda predial (BACKEND_AGENT + FRONTEND_AGENT)
@@ -205,13 +253,31 @@ Piloto verificado en `http://demo.localhost`: mapa funcional con 3 estilos base 
 ---
 
 ## Notas técnicas
+
+### Arranque del stack
 - Ejecutar el stack: `docker compose -f infra/docker/docker-compose.yml up -d` desde la raíz del proyecto
-- Inicializar BD demo: `Get-Content database\scripts\init_mun_demo.sql | docker exec -i sig_postgres psql -U sig_usuario -d sig_municipal`
-- Configurar GeoServer: `.\geoserver\config\demo\configurar_demo.ps1` (requiere stack levantado)
 - Hosts Windows para desarrollo: agregar `127.0.0.1  demo.localhost` en `C:\Windows\System32\drivers\etc\hosts`
 - Seeds crean usuario `admin@sig.cl` / `Admin1234` (solo desarrollo); `municipio@demo.sig.cl` / `Admin1234` para admin_municipal
-- `unaccent()` es STABLE — no usar en columnas GENERATED ni en expresiones de índice; usar `to_tsvector('spanish', col)` para FTS
-- El datastore GeoServer necesita host `sig_postgres` (nombre Docker), no `localhost`
-- Migraciones deben ejecutarse en orden: 002 → 001 → 003 → 004 → 005 (002 instala PostGIS, que 001 requiere para la columna geometry de reportes_ciudadanos)
-- `registrarLog()` en logService.js es no-fatal: si falla escribe al logger del proceso pero no propaga el error
+
+### GeoServer
+- Publicar capas demo (idempotente): `.\geoserver\config\demo\publicar_capas_demo.ps1` — reemplaza `configurar_demo.ps1`
+- El datastore GeoServer necesita host `sig_postgres` (nombre Docker interno), no `localhost`
+- El parámetro `LAYERS` del WMS global requiere prefijo de workspace: `demo:inacap_ccp_thno`
+- **No usar `URLSearchParams` para construir URLs WMS** — codifica `:` → `%3A` y `{` → `%7B`; usar string literal directo
+- GeoServer GetFeatureInfo es accesible desde el browser via `/geoserver/wms` (Nginx proxy), no via la URL Docker interna
+
+### Importación de shapefiles
+- Método: `docker cp archivo.shp sig_postgres:/tmp/` + `shp2pgsql -s SRID_ORIGEN:4326 -I`
+- Shapefiles del proyecto en EPSG:32718 (UTM 18S) — reproyectados a EPSG:4326 en GeoServer (`REPROJECT_TO_DECLARED`)
+- Ver `database/scripts/reemplazar_capas_demo.sql` para estructura de inserción en `public.capas`
+
+### Base de datos
+- Inicializar BD demo: `docker exec -i sig_postgres psql -U sig_usuario -d sig_municipal < database\scripts\init_mun_demo.sql`
+- Migraciones en orden: 002 → 001 → 003 → 004 → 005 (002 instala PostGIS, requerido por 001)
+- `unaccent()` es STABLE — no usar en columnas GENERATED ni índices; usar `to_tsvector('spanish', col)` para FTS
+
+### Backend / Frontend
+- `registrarLog()` en logService.js es no-fatal: si falla escribe al logger pero no propaga el error
 - `api.get(ruta, { params })` serializa params como query string (corregido en 2.5)
+- `tabla_origen` nulo/vacío en `public.capas` = capa WMS externa; no nulo = servida desde GeoServer local
+- `metadata.nombre_capa_wms` almacena el nombre real del parámetro `LAYERS` (incluye prefijo de workspace para GeoServer)
