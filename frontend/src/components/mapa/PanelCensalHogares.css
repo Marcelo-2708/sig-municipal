@@ -1,0 +1,143 @@
+/* PanelCensalHogares.css */
+
+.pch-panel {
+  position: absolute;
+  top: 60px;
+  right: 12px;
+  width: 320px;
+  max-height: calc(100vh - 80px);
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.18);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  overflow: hidden;
+}
+
+.pch-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: #1a56db;
+  color: #ffffff;
+  border-radius: 10px 10px 0 0;
+  flex-shrink: 0;
+}
+
+.pch-header-titulo {
+  font-weight: 600;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pch-icono {
+  font-size: 16px;
+}
+
+.pch-cerrar {
+  background: none;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+  opacity: 0.8;
+  transition: opacity 0.15s;
+}
+
+.pch-cerrar:hover {
+  opacity: 1;
+  background: rgba(255,255,255,0.15);
+}
+
+.pch-body {
+  overflow-y: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pch-seccion {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pch-seccion-titulo {
+  background: #e2e8f0;
+  color: #334155;
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 6px 12px;
+}
+
+.pch-fila {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pch-fila:first-of-type {
+  border-top: none;
+}
+
+.pch-label {
+  color: #64748b;
+  flex: 1;
+}
+
+.pch-valor {
+  color: #0f172a;
+  font-weight: 500;
+  text-align: right;
+  margin-left: 8px;
+}
+
+/* Grafico de torta */
+.pch-torta-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pch-canvas {
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+
+.pch-torta-leyenda {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: #334155;
+}
+
+.pch-leyenda-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pch-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

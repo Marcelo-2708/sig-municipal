@@ -99,6 +99,13 @@ export function useGetFeatureInfo(capasActivas) {
     if (!mapaRef) return
 
     const handler = async (e) => {
+      // Si una capa interactiva (ej: hogares) ya procesó este click, ignorar
+      const store = useMapaStore.getState()
+      if (store.clickBloqueado) {
+        store.setClickBloqueado(false)
+        return
+      }
+
       // Consulta todas las capas WMS activas que tengan URL configurada
       const capasConsultables = capasActivas.filter((c) => c.url_wms || c.tabla_origen)
       if (capasConsultables.length === 0) return

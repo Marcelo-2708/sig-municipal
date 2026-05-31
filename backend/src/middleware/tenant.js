@@ -66,7 +66,7 @@ export async function resolverTenant(request, reply) {
   // Buscar municipio en la BD por su código (subdominio)
   try {
     const resultado = await consultar(
-      `SELECT id, codigo, nombre, esquema_bd, activo
+      `SELECT id, codigo, nombre, esquema_bd, activo, config
        FROM public.municipios
        WHERE codigo = $1
        LIMIT 1`,
@@ -101,6 +101,7 @@ export async function resolverTenant(request, reply) {
       nombre: municipio.nombre,
       esquemaBd: municipio.esquema_bd,
       activo: municipio.activo,
+      config: municipio.config ?? {},
     };
 
     logger.debug({ tenantId: municipio.id, tenantCodigo: municipio.codigo }, 'Tenant resuelto correctamente');

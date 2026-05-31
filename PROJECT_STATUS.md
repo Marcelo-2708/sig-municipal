@@ -1,6 +1,6 @@
 # Estado del proyecto SIG Municipal
 
-## Última actualización: 2026-05-22
+## Última actualización: 2026-05-30
 
 ---
 
@@ -167,6 +167,147 @@ Capas servidas desde GeoServer local (PostGIS `mun_demo`), no desde WMS externo.
 
 ---
 
+## ✅ Fase 2.7 — Tenant Vichuquén + configuración per-tenant — COMPLETADA (2026-05-28)
+
+Alta del municipio piloto real (Vichuquén, Maule) como segundo tenant del sistema.
+Implementación de configuración de mapa por municipio (fondo, centro, zoom) leída desde la BD.
+
+### Datos y GeoServer
+
+- Schema `mun_vichuquen` ya existía en PostgreSQL con 4 tablas importadas desde shapefiles:
+  - `mun_vichuquen.censo` — manzanas censales Censo INE 2017 (EPSG:32719)
+  - `mun_vichuquen.red_vial` — red vial (EPSG:32719)
+  - `mun_vichuquen.amenaza` — zonas de amenaza natural (EPSG:32719)
+  - `mun_vichuquen.hogares` — hogares (EPSG:32719)
+- `geoserver/config/vichuquen/publicar_capas_vichuquen.ps1` — script PowerShell idempotente:
+  - Crea workspace `vichuquen` + namespace en GeoServer REST API
+  - Crea datastore `vichuquen_postgis` (host `sig_postgres`, esquema `mun_vichuquen`)
+  - Publica las 4 capas con `nativeCRS: EPSG:32719 → srs: EPSG:4326` (`REPROJECT_TO_DECLARED`)
+  - Recalcula bbox desde datos reales en cada capa
+  - Usa string literal para JSON (no here-strings — incompatibles con PS 5.1 en este entorno)
+
+### Base de datos
+
+- `database/scripts/init_mun_vichuquen.sql` — script idempotente (`ON CONFLICT DO NOTHING`):
+  - Inserta `vichuquen` en `public.municipios` (id fijo `00000000-0000-0000-0000-000000000002`, subdominio `vichuquen`, región Maule, provincia Curicó, plan básico)
+  - Registra las 4 capas en `public.capas` con `tabla_origen`, `url_wms` interna y `metadata.nombre_capa_wms`
+  - `censo` y `red_vial` visibles por defecto; `amenaza` oculta por defecto (visible en admin); `hogares` visible por defecto
+- `municipios.config` — nuevo campo activo: guarda configuración de mapa por tenant:
+  ```json
+  {"mapa": {"centro": [-71.97, -34.87], "zoom": 13, "fondo": "esri_imagery"}}
+  ```
+
+### Backend — endpoint `/api/tenant/info`
+
+- `backend/src/routes/tenant.js` — nuevo; `GET /api/tenant/info` sin autenticación:
+  - Retorna `{ id, codigo, nombre, config }` del tenant activo
+  - `config` incluye el campo `mapa` con fondo, centro y zoom
+- `backend/src/middleware/tenant.js` — query de resolución ahora incluye `config` en el `SELECT`; `request.tenant.config` disponible en todas las rutas
+- `backend/server.js` — registra `rutasTenant`
+- El frontend ya llamaba este endpoint (`useTenant` → React Query) — ahora tiene respuesta real con configuración
+
+### Frontend — mapa configurable por tenant
+
+- `frontend/src/config/mapas.js`:
+  - `FONDOS_MAPA` — objeto con estilos MapLibre por clave: `osm` (OpenStreetMap Mapnik) y `esri_imagery` (ESRI World Imagery satelital)
+  - `resolverEstiloFondo(idFondo)` — retorna el estilo correspondiente o OSM como fallback
+  - `ESTILO_MAPA_BASE` mantenido como alias de `FONDOS_MAPA.osm` para compatibilidad
+- `frontend/src/components/mapa/MapaBase.jsx`:
+  - Acepta prop `configMapa?: { centro, zoom, fondo }` 
+  - Usa `resolverEstiloFondo(configMapa?.fondo)`, `configMapa?.centro`, `configMapa?.zoom` con fallback a constantes
+- `frontend/src/pages/MapaPublico.jsx`:
+  - Lee `cargando` (renombrado `tenantCargando`) de `useTenant`
+  - Pasa `municipio.config.mapa` como `configMapa` a `MapaBase`
+  - **Fix de race condition**: `MapaBase` se monta sólo cuando `!tenantCargando` — evita que el `useEffect` de inicialización (dependencias `[]`) corra con `configMapa = undefined` antes de que `/api/tenant/info` responda
+
+### Notas técnicas de esta fase
+
+- Tablas de Vichuquén en **EPSG:32719** (UTM 19S) — diferente a las del tenant demo (EPSG:32718, UTM 18S)
+- `municipios.config` es JSONB libre — cualquier clave puede agregarse sin migración de esquema
+- La race condition del mapa (fondo incorrecto en carga inicial) se debe a que `MapaBase` inicializa el mapa una sola vez con `useEffect` de deps `[]`. Solución: diferir el mount del componente hasta que la config esté disponible. No usar `configMapa` en las deps del effect (causaría re-creación del mapa)
+- URLs WMS internas Docker (`http://sig_geoserver:8080/...`) van en `public.capas.url_wms`; el frontend usa `GEOSERVER_URL` (proxiado por Nginx) para las llamadas reales al navegador
+- `obtenerCapasPublicas()` filtra por `visible_por_defecto = true AND activo = true` — `amenaza` no aparece en el mapa público aunque sí en el panel admin
+
+---
+
+## ✅ Fase 2.8 — Panel censal de hogares y mejoras UI — COMPLETADA (2026-05-30)
+
+### GeoServer — capa hogares en Vichuquén
+
+- `geoserver/config/vichuquen/publicar_capas_vichuquen.ps1` — agregada capa `hogares` al array `$CAPAS`:
+  - `nativeCRS: EPSG:32719 → srs: EPSG:4326` (`REPROJECT_TO_DECLARED`), igual que el resto de capas del tenant
+  - Script pasa de publicar 3 capas a 4 (censo, red_vial, amenaza, hogares)
+
+### Frontend — Panel censal de manzanas (PanelCensalHogares)
+
+**`mapaStore.js`** — nuevos campos de estado:
+- `manzanaSeleccionada: null` — propiedades del feature clickeado + `_num`, `_x`, `_y`
+- `setManzanaSeleccionada(datos)` — abre el panel censal
+- `clickBloqueado: false` — flag síncrono que bloquea `useGetFeatureInfo` cuando un click fue procesado por la capa hogares
+- `setClickBloqueado(valor)` — activa/desactiva el bloqueo
+- `limpiarMapa()` actualizado para limpiar `manzanaSeleccionada` y `clickBloqueado`
+
+**`hooks/useHogaresInteractivo.js`** — reescrito:
+- En lugar de crear un `maplibregl.Popup`, llama a `setManzanaSeleccionada({ ...props, _num, _x, _y })` al hacer click
+- Click en punto (`LYR_PTS`) y click en polígono con datos (`LYR_POLY`) llaman `setClickBloqueado(true)` antes de abrir el panel
+- Coordenadas de pixel `e.point.x / e.point.y` guardadas en `manzanaSeleccionada` para posicionar el panel near-click
+- `circle-radius` cambiado de valor fijo a expresión MapLibre proporcional a `n_hog`:
+  - `n_hog ≤ 4` → radio 8 px
+  - `n_hog ≤ 9` → radio 12 px
+  - `n_hog ≤ 16` → radio 16 px
+  - `n_hog ≥ 17` → radio 22 px
+- Colores de polígonos actualizados a 4 rangos coherentes con el tamaño de los puntos: `#ffe4e6 / #fca5a5 / #ef4444 / #b91c1c`
+
+**`hooks/useGetFeatureInfo.js`** — guarda de click bloqueado:
+- Al inicio del handler de click lee `useMapaStore.getState().clickBloqueado`
+- Si `true` → resetea a `false` y retorna sin consultar GFI
+- Usa `getState()` (no estado reactivo) porque el handler es un closure estático registrado en `mapa.on('click')`
+
+**`components/mapa/PanelCensalHogares.jsx`** — reescrito completo:
+- Lee `manzanaSeleccionada` y `setManzanaSeleccionada` desde `mapaStore` — no recibe props
+- **Posición dinámica**: aparece a 15px a la derecha del punto clickeado; si `px > window.innerWidth - 315` aparece a la izquierda (previene salida de pantalla); `top = max(8, py - 50)`; usa `style={{ position: 'absolute', left, top }}` en lugar de clases Tailwind fijas
+- **Cabecera**: gradiente `linear-gradient(135deg, #1d4ed8 → #1e3a8a)`, dos líneas: "Manzana N" + "Vichuquén", botón X
+- **Gráfico canvas** 120×120 px: sector azul `#1565C0` (hombres) + sector magenta `#E91E8C` (mujeres) + borde blanco 3px; leyenda con iconos ♂ ♀, porcentajes
+- **Datos en grid 2 columnas** (tarjetas `bg-gray-50 rounded-lg`): Total personas, Total hogares, Hombres, Mujeres, Edad promedio, Escolaridad (N años), Localidad (col-span-2)
+- Ancho fijo 300 px, `shadow-2xl`, `rounded-xl`, sin scroll
+
+**`components/mapa/MapaBase.jsx`** — integración:
+- Importa y llama `useHogaresInteractivo(mapaRef, capasActivas, GEOSERVER_URL)` — los puntos y eventos de hogares se gestionan desde aquí
+
+**`pages/MapaPublico.jsx`** — renderizado:
+- Importa y renderiza `<PanelCensalHogares />` junto a `<FichaPredio />` (el panel se autogestiona via store)
+
+### Frontend — mejoras de UI globales
+
+**Navbar superior (`MapaPublico.jsx`)**:
+- Eliminado `md:left-72` — causaba que el header apareciera "cortado" desde la izquierda en pantallas medianas
+- Ícono de ubicación encerrado en `div` con `bg-municipal-700` para consistencia visual
+- Título en dos líneas: "SIG MUNICIPAL" (caps tracking-widest, oculto en móvil) + nombre del municipio con `truncate`
+- `flex-shrink-0` en el botón "Ingresar" para que nunca se comprima
+- `shadow-sm` + `bg-white/90 backdrop-blur-md`
+
+**Panel de capas (`ControlCapas.jsx`)**:
+- Se posiciona él mismo con `absolute top-16 left-4 z-controles`; eliminado el wrapper `<div>` en `MapaPublico`
+- `w-[260px]`, `bg-white/95 backdrop-blur-sm`, `shadow-2xl`, `rounded-xl`, `border border-gray-100`
+- **Íconos SVG inline** de tipo de geometría detectado por `tipo_geometria` o heurística sobre `nombre_interno`:
+  - Polígono → hexágono azul (`text-blue-500`)
+  - Línea → polilínea ámbar (`text-amber-500`)
+  - Punto → círculo verde (`text-emerald-500`)
+  - Default → ícono de capas gris
+- **Toggle switch** accesible (`role="switch"`, `aria-checked`) en lugar de `<input type="checkbox">`; animación CSS `translate-x`
+- **Cabecera** con contador activas/total `(2/5)`, botón colapsar con rotación 180°
+- **Separador `border-t`** entre grupos de categorías (excepto el primero)
+- Encabezados de categoría en uppercase tracking-wider gris, con conteo entre paréntesis
+- Slider de opacidad solo cuando la capa está activa; `accent-municipal-600`
+
+### Notas técnicas de esta fase
+
+- `useGetFeatureInfo` usa `useMapaStore.getState()` (API imperativa de Zustand) en lugar de estado reactivo para leer `clickBloqueado` en el momento exacto del evento — los closures registrados en `mapa.on('click')` no tienen acceso a estado React actualizado
+- El panel `PanelCensalHogares` no usa `position: absolute` de Tailwind porque necesita valores computados en JS; usa `style={{ position: 'absolute', left, top, width: 300 }}`
+- `circle-radius` con expresión `case` de MapLibre es más simple y estable que `symbol` + `addImage` — intentar `addImage` con imágenes de distinto tamaño produce error "mismatched image size" en MapLibre (todas las imágenes de un symbol layer deben tener las mismas dimensiones)
+
+---
+
 ## 🔜 Fase 3 — Funcionalidades avanzadas (sem. 9–16)
 
 ### 3.1 Búsqueda predial (BACKEND_AGENT + FRONTEND_AGENT)
@@ -281,3 +422,17 @@ Capas servidas desde GeoServer local (PostGIS `mun_demo`), no desde WMS externo.
 - `api.get(ruta, { params })` serializa params como query string (corregido en 2.5)
 - `tabla_origen` nulo/vacío en `public.capas` = capa WMS externa; no nulo = servida desde GeoServer local
 - `metadata.nombre_capa_wms` almacena el nombre real del parámetro `LAYERS` (incluye prefijo de workspace para GeoServer)
+- `municipios.config` JSONB guarda configuración per-tenant; clave `mapa` con `{ centro, zoom, fondo }` usada por el frontend
+- `resolverEstiloFondo(idFondo)` en `config/mapas.js` convierte el ID de fondo a objeto de estilo MapLibre; fallback a OSM
+- **Race condition mapa base**: `MapaBase` usa `useEffect` con deps `[]` (se ejecuta una sola vez al montar). Si `configMapa` llega después (async), el mapa ya fue inicializado con defaults. Fix: diferir el mount de `MapaBase` hasta que `tenantCargando === false` en `MapaPublico`
+- Agregar nuevo tenant: (1) SQL `init_mun_X.sql`, (2) `publicar_capas_X.ps1`, (3) hosts file + `municipios.config` con config de mapa
+
+### Panel censal de hogares
+- `PanelCensalHogares` lee directamente de `mapaStore` — no necesita props; se renderiza en `MapaPublico` junto a `FichaPredio`
+- Posición near-click: coordenadas `e.point.x / e.point.y` viajan en `manzanaSeleccionada._x / ._y`; detección de desborde por la derecha con `window.innerWidth - 315`
+- `useGetFeatureInfo` usa `useMapaStore.getState()` (API imperativa de Zustand) para leer `clickBloqueado` en el closure del evento — el estado reactivo de React no está disponible en handlers registrados via `mapa.on('click')`
+- `circle-radius` con expresión `case` de MapLibre GL es la forma correcta de escalar puntos proporcionalmente; usar `symbol` + `addImage` con canvas de distintos tamaños produce error "mismatched image size" (MapLibre exige mismo tamaño para todas las imágenes de un symbol layer)
+
+### UI / Navbar
+- El `md:left-72` en el `<header>` de `MapaPublico` desplazaba el navbar 288 px desde la izquierda en pantallas medianas, causando apariencia de "cortado". Eliminado — el panel de capas está en `top-16` y no se superpone con el header
+- `ControlCapas` se posiciona a sí mismo con `absolute`; no necesita wrapper en el padre

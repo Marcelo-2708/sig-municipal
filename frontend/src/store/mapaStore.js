@@ -17,6 +17,13 @@ const useMapaStore = create((set) => ({
   // Predio actualmente resaltado (GeoJSON Feature o null)
   predioResaltado: null,
 
+  // Manzana censal seleccionada al hacer click en capa hogares
+  manzanaSeleccionada: null,
+
+  // Flag síncrono: true cuando un click de capa hogares ya fue procesado.
+  // useGetFeatureInfo lo lee vía getState() y lo resetea a false.
+  clickBloqueado: false,
+
   /**
    * Guarda la referencia al objeto MapLibre una vez inicializado.
    * @param {maplibregl.Map} mapa
@@ -42,9 +49,21 @@ const useMapaStore = create((set) => ({
   setPredioResaltado: (geojson) => set({ predioResaltado: geojson }),
 
   /**
+   * Guarda las propiedades de la manzana censal seleccionada (null para cerrar).
+   * @param {object|null} datos - Propiedades del feature + _num de manzana
+   */
+  setManzanaSeleccionada: (datos) => set({ manzanaSeleccionada: datos }),
+
+  /**
+   * Activa o desactiva el bloqueo del GetFeatureInfo genérico.
+   * @param {boolean} valor
+   */
+  setClickBloqueado: (valor) => set({ clickBloqueado: valor }),
+
+  /**
    * Limpia la referencia al mapa (llamado en cleanup de useEffect).
    */
-  limpiarMapa: () => set({ mapaRef: null, predioResaltado: null }),
+  limpiarMapa: () => set({ mapaRef: null, predioResaltado: null, manzanaSeleccionada: null, clickBloqueado: false }),
 }))
 
 export default useMapaStore

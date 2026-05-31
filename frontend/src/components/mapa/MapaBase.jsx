@@ -1,23 +1,18 @@
 /**
- * Componente de mapa base.
- * Inicializa MapLibre GL JS una única vez (guard con useRef).
- * Sincroniza las capas WMS activas y expone la referencia al store.
- * El fondo cartográfico es fijo (OSM Mapnik), definido en config/mapas.js.
+ * MapaBase.jsx
+ * Inicializa MapLibre GL JS, sincroniza capas WMS y activa
+ * la interactividad de hogares (puntos + popup censal).
  */
-
 import { useEffect, useRef } from 'react'
 import maplibregl from 'maplibre-gl'
 
 import useMapaStore from '../../store/mapaStore.js'
-import { ESTILO_MAPA_BASE, CENTRO_INICIAL, ZOOM_INICIAL } from '../../config/mapas.js'
+import { CENTRO_INICIAL, ZOOM_INICIAL, resolverEstiloFondo } from '../../config/mapas.js'
 import { sincronizarCapas } from '../../services/mapaUtils.js'
 import { GEOSERVER_URL } from '../../config/api.js'
+import { useHogaresInteractivo } from '../../hooks/useHogaresInteractivo.js'
 
-/**
- * @param {object} props
- * @param {Array}  props.capasActivas - Lista de capas WMS que deben estar visibles
- */
-function MapaBase({ capasActivas = [] }) {
+function MapaBase({ capasActivas = [], configMapa }) {
   const contenedorRef   = useRef(null)
   const inicializadoRef = useRef(false)
 
@@ -25,41 +20,32 @@ function MapaBase({ capasActivas = [] }) {
   const limpiarMapa = useMapaStore((s) => s.limpiarMapa)
   const mapaRef     = useMapaStore((s) => s.mapaRef)
 
-  // ── Inicialización del mapa ─────────────────────────────────────────────
+  // Puntos azules + popup censal en manzanas hogares
+  useHogaresInteractivo(mapaRef, capasActivas, GEOSERVER_URL)
+
+  // -- Inicializacion ----------------------------------------------------------
   useEffect(() => {
     if (inicializadoRef.current || !contenedorRef.current) return
     inicializadoRef.current = true
 
+    const estilo = resolverEstiloFondo(configMapa?.fondo)
+    const centro = configMapa?.centro ?? CENTRO_INICIAL
+    const zoom   = configMapa?.zoom   ?? ZOOM_INICIAL
+
     const mapa = new maplibregl.Map({
       container: contenedorRef.current,
-      style: ESTILO_MAPA_BASE,
-      center: CENTRO_INICIAL,
-      zoom: ZOOM_INICIAL,
+      style: estilo,
+      center: centro,
+      zoom: zoom,
       attributionControl: false,
       trackResize: true,
     })
 
-    mapa.addControl(
-      new maplibregl.NavigationControl({ showCompass: true }),
-      'bottom-right'
-    )
+    mapa.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right')
+    mapa.addControl(new maplibregl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: false }), 'bottom-right')
+    mapa.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
 
-    mapa.addControl(
-      new maplibregl.GeolocateControl({
-        positionOptions: { enableHighAccuracy: true },
-        trackUserLocation: false,
-      }),
-      'bottom-right'
-    )
-
-    mapa.addControl(
-      new maplibregl.AttributionControl({ compact: true }),
-      'bottom-left'
-    )
-
-    mapa.on('load', () => {
-      setMapaRef(mapa)
-    })
+    mapa.on('load', () => setMapaRef(mapa))
 
     return () => {
       mapa.remove()
@@ -69,9 +55,8 @@ function MapaBase({ capasActivas = [] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Sincronización de capas WMS ─────────────────────────────────────────
+  // -- Sincronizacion capas WMS ------------------------------------------------
   useEffect(() => {
-    if (!mapaRef || !mapaRef.loaded()) return
     sincronizarCapas(mapaRef, capasActivas, GEOSERVER_URL)
   }, [capasActivas, mapaRef])
 
