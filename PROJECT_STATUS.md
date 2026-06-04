@@ -1,6 +1,6 @@
 # Estado del proyecto SIG Municipal
 
-## Última actualización: 2026-05-30
+## Última actualización: 2026-06-03
 
 ---
 
@@ -305,6 +305,54 @@ Implementación de configuración de mapa por municipio (fondo, centro, zoom) le
 - `useGetFeatureInfo` usa `useMapaStore.getState()` (API imperativa de Zustand) en lugar de estado reactivo para leer `clickBloqueado` en el momento exacto del evento — los closures registrados en `mapa.on('click')` no tienen acceso a estado React actualizado
 - El panel `PanelCensalHogares` no usa `position: absolute` de Tailwind porque necesita valores computados en JS; usa `style={{ position: 'absolute', left, top, width: 300 }}`
 - `circle-radius` con expresión `case` de MapLibre es más simple y estable que `symbol` + `addImage` — intentar `addImage` con imágenes de distinto tamaño produce error "mismatched image size" en MapLibre (todas las imágenes de un symbol layer deben tener las mismas dimensiones)
+
+---
+
+## ✅ Fase 2.9 — Panel de amenaza + acceso externo por ngrok — COMPLETADA (2026-06-03)
+
+### Frontend — Panel especializado para la capa "amenaza"
+
+**`hooks/useGetFeatureInfo.js`** — posición del click exportada:
+- Nuevo estado `clickPos: null` — se setea con `{ x: e.point.x, y: e.point.y }` al inicio de cada handler de click
+- `cerrar()` también resetea `clickPos` a `null`
+- Retorna `clickPos` junto a `resultados`, `cargando`, `error` y `cerrar`
+
+**`components/mapa/PanelAmenaza.jsx`** — nuevo componente especializado:
+- Props: `resultado` (item `{ capa, features }` de la capa amenaza), `clickPos`, `cerrar`
+- **Posición dinámica**: misma lógica que `PanelCensalHogares` — aparece a 15 px a la derecha del click; si `px > window.innerWidth - 315` aparece a la izquierda; `top = max(8, py - 50)`; usa `style={{ position: 'absolute', left, top, width: 300 }}`
+- **Cabecera**: gradiente `#1d4ed8 → #1e3a8a`, dos líneas: "Vichuquén" + "Zona de Amenaza", botón X
+- **Badge de nivel** por `gridcode`:
+  - `1` → "Baja" (verde: `bg-green-100 text-green-700`)
+  - `2` → "Media" (naranja: `bg-orange-100 text-orange-700`)
+  - `3` → "Alta" (rojo: `bg-red-100 text-red-700`)
+  - Otro → "Código N" (gris, fallback defensivo)
+- **Filtro de campos internos**: elimina `ogc_fid`, `qc_id`, `id`, `objectid`, `gridcode` y cualquier campo que empiece con `shape_`; muestra campos restantes en grid 2 columnas
+- Ídem estilo que `PanelCensalHogares`: `shadow-2xl`, `rounded-xl`, `border border-blue-100`, ancho 300 px
+
+**`pages/MapaPublico.jsx`** — enrutamiento de resultados GFI:
+- Importa `PanelAmenaza`
+- Destructura `clickPos` (renombrado `featureClickPos`) desde `useGetFeatureInfo`
+- Separa resultados: `resultadoAmenaza = featureResultados?.find(r => r.capa.nombre_interno === 'amenaza')` y `resultadosResto = featureResultados?.filter(...)`
+- `PanelAmenaza` recibe `resultadoAmenaza` + `featureClickPos` + `cerrarFeatureInfo`
+- `PanelFeatureInfo` recibe solo `resultadosResto` (sin amenaza); su prop `error` es `null` cuando amenaza está mostrando panel (evita doble mensaje de error)
+- Cuando solo hay resultado de amenaza, `PanelFeatureInfo` retorna `null` sin mostrar nada extra
+
+### Infraestructura — Acceso externo por ngrok
+
+**`infra/nginx/sites/municipios.conf`** — nuevo bloque `default_server`:
+- `listen 80 default_server` + `server_name _` captura cualquier `Host` que no coincida con `*.localhost`:
+  - URLs de ngrok (`abc123.ngrok-free.app`)
+  - Acceso directo por IP
+  - Cualquier dominio externo no configurado
+- Fuerza `proxy_set_header X-Municipio vichuquen` — el middleware `tenant.js` del backend resuelve el tenant desde esta cabecera; el bloque siempre sirve el municipio piloto Vichuquén
+- Mismas `location` blocks que el bloque de desarrollo: `/api/`, `/geoserver/web/` (bloqueado 403), `/geoserver/`, `/`
+- Bloque agregado entre el server block de desarrollo y los bloques de producción comentados
+
+### Notas técnicas de esta fase
+
+- `PanelAmenaza` y `PanelFeatureInfo` comparten `cerrar` (es la misma función `cerrarFeatureInfo`) — cerrar cualquiera de los dos limpia todos los resultados del GFI incluyendo `clickPos`
+- El `default_server` de Nginx no requiere que el `Host` sea un subdominio conocido; `server_name _` es el patrón comodín estándar de Nginx para el bloque fallback
+- El bloque de desarrollo `*.localhost` sigue teniendo prioridad sobre el `default_server` para accesos locales — Nginx evalúa los bloques en orden y hace match exacto/regex antes que el default
 
 ---
 
