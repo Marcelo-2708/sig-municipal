@@ -89,10 +89,12 @@ export function useGetFeatureInfo(capasActivas) {
   const [resultados, setResultados] = useState(null)
   const [cargando,   setCargando]   = useState(false)
   const [error,      setError]      = useState(null)
+  const [clickPos,   setClickPos]   = useState(null)
 
   const cerrar = useCallback(() => {
     setResultados(null)
     setError(null)
+    setClickPos(null)
   }, [])
 
   useEffect(() => {
@@ -105,6 +107,9 @@ export function useGetFeatureInfo(capasActivas) {
         store.setClickBloqueado(false)
         return
       }
+
+      // Guardar posición del click para posicionar paneles especializados
+      setClickPos({ x: e.point.x, y: e.point.y })
 
       // Consulta todas las capas WMS activas que tengan URL configurada
       const capasConsultables = capasActivas.filter((c) => c.url_wms || c.tabla_origen)
@@ -141,5 +146,5 @@ export function useGetFeatureInfo(capasActivas) {
     return () => mapaRef.off('click', handler)
   }, [mapaRef, capasActivas])
 
-  return { resultados, cargando, error, cerrar }
+  return { resultados, cargando, error, cerrar, clickPos }
 }

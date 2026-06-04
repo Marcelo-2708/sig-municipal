@@ -11,6 +11,7 @@ import BuscadorPredial  from '../components/mapa/BuscadorPredial.jsx'
 import FichaPredio         from '../components/mapa/FichaPredio.jsx'
 import PanelFeatureInfo    from '../components/mapa/PanelFeatureInfo.jsx'
 import PanelCensalHogares from '../components/mapa/PanelCensalHogares.jsx'
+import PanelAmenaza       from '../components/mapa/PanelAmenaza.jsx'
 import useCapas              from '../hooks/useCapas.js'
 import useTenant             from '../hooks/useTenant.js'
 import { useGetFeatureInfo } from '../hooks/useGetFeatureInfo.js'
@@ -29,7 +30,13 @@ function MapaPublico() {
     cargando:   featureCargando,
     error:      featureError,
     cerrar:     cerrarFeatureInfo,
+    clickPos:   featureClickPos,
   } = useGetFeatureInfo(capasActivas)
+
+  // Separar resultado de amenaza del resto para renderizar paneles especializados
+  const resultadoAmenaza = featureResultados?.find((r) => r.capa.nombre_interno === 'amenaza') ?? null
+  const resultadosResto  = featureResultados?.filter((r) => r.capa.nombre_interno !== 'amenaza') ?? null
+  const hayResto = resultadosResto && resultadosResto.length > 0
 
   // Si hay resultados de GFI, el panel de FichaPredio se oculta para no solaparse
   const mostrarFichaPredio = !featureCargando && !featureResultados && !featureError
@@ -85,11 +92,18 @@ function MapaPublico() {
         opacidades={opacidades}
       />
 
-      {/* ── Panel GetFeatureInfo (esquina superior derecha) ─────────────── */}
+      {/* ── Panel especializado: Zona de Amenaza (cerca del click) ──────── */}
+      <PanelAmenaza
+        resultado={resultadoAmenaza}
+        clickPos={featureClickPos}
+        cerrar={cerrarFeatureInfo}
+      />
+
+      {/* ── Panel GetFeatureInfo genérico (resto de capas) ──────────────── */}
       <PanelFeatureInfo
-        resultados={featureResultados}
+        resultados={hayResto ? resultadosResto : null}
         cargando={featureCargando}
-        error={featureError}
+        error={resultadoAmenaza ? null : featureError}
         cerrar={cerrarFeatureInfo}
       />
 
